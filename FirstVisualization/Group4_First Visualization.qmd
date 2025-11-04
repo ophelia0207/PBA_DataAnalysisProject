@@ -1,0 +1,170 @@
+---
+title: "Group4"
+author: "Ophelia & Joanna"
+format:
+  pdf:
+    toc: true                    
+    number-sections: true        
+    papersize: A4
+    geometry:
+      - margin=1in
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(tidyverse)
+library(ggplot2)
+library(scales)
+```
+
+# Data Preprocessing
+## Data Import and cleaning
+```{r}
+coffee <- read_csv("C:/Users/USER/Desktop/PBAwork/Final/psd_coffee.csv")
+
+coffee_clean <- coffee |>
+  filter(!is.na(Country), !is.na(Year))
+
+coffee_clean <- coffee_clean |>
+  mutate(across(where(is.numeric), ~ replace_na(.x, 0)))
+
+coffee_clean <- coffee_clean |>
+  mutate(across(where(is.numeric), ~ if_else(.x < 0, 0, .x)))
+
+coffee_clean <- coffee_clean |>
+  mutate(
+    Net_Exports = Exports - Imports,
+    Self_Sufficiency = Production / `Domestic Consumption`
+  )
+
+summary(coffee_clean)
+```
+
+# Question 1
+## Has global coffee production increased over time? In which year did it reach its peak?
+```{r}
+global_production <- coffee_clean |>
+  group_by(Year) |>
+  summarise(Total_Production = sum(Production, na.rm = TRUE))
+
+peak_year <- global_production |>
+  filter(Total_Production == max(Total_Production))
+
+plot1 <- ggplot(data = global_production, 
+                mapping = aes(x = Year, y = Total_Production)) +
+  geom_line(color = "#8B4513", linewidth = 0.5) +
+  geom_point(color = "#8B4513", size = 1) +
+  geom_vline(xintercept = peak_year$Year, 
+             linetype = "dashed", 
+             color = "red", 
+             linewidth = 1) +
+  geom_point(data = peak_year, 
+             aes(x = Year, y = Total_Production),
+             color = "red", 
+             size = 3) +
+  annotate("text", 
+           x = peak_year$Year, 
+           y = peak_year$Total_Production * 1.05,
+           label = paste0("Peak  ", peak_year$Year),
+           color = "red",
+           fontface = "bold") +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Global Coffee Production Over Time",
+    x = "Year",
+    y = "Total Production (1000 60-kg bags)",
+    caption = "Source: USDA PSD"
+  ) +
+  theme_minimal()
+
+print(plot1)
+```
+Global coffee production has shown a steady upward trend from 1960 to 2023, reflecting continuous expansion in global supply and cultivation capacity.
+The production reached its historical peak in 2020, at approximately 170 million 60-kg bags.
+
+# Question 2
+## Which countries have shown the fastest growth in coffee production over the past 20 years?
+```{r}
+max_year <- max(coffee_clean$Year, na.rm = TRUE)
+start_year <- max_year - 20
+
+country_growth <- coffee_clean |>
+  filter(Year >= start_year, Year <= max_year) |>
+  group_by(Country) |>
+  summarise(
+    First_Production = Production[Year == min(Year)][1],
+    Last_Production = Production[Year == max(Year)][1],
+    .groups = "drop"
+  ) |>
+  filter(First_Production > 0) |>
+  mutate(
+    Growth_Rate = ((Last_Production - First_Production) / First_Production) * 100
+  ) |>
+  filter(Growth_Rate > 0) |>
+  arrange(desc(Growth_Rate)) |>
+  head(15)
+
+plot2 <- ggplot(data = country_growth, 
+                mapping = aes(x = reorder(Country, Growth_Rate), 
+                              y = Growth_Rate)) +
+  geom_col(fill = "#D2691E", alpha = 0.8) +
+  geom_text(aes(label = paste0(round(Growth_Rate, 1), "%")), 
+            hjust = -0.1, 
+            size = 3) +
+  coord_flip() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title = "Top 15 Fastest Growing Coffee Producers",
+    subtitle = paste0("Growth rate (", start_year, "-", max_year, ")"),
+    x = NULL,
+    y = "Growth Rate (%)",
+    caption = "Source: USDA PSD"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.major.y = element_blank()
+  )
+
+print(plot2)
+```
+Over the past two decades, China has emerged as the fastest-growing coffee producer, with an exceptional 340% increase in output. Other countries showing strong expansion include Uganda, Tanzania, and Honduras, each exceeding 100% growth.
+This reflects the rapid development of coffee cultivation in Asia and Africa, reshaping the global coffee supply landscape.
+
+# Question 3
+## Is production and consumption balanced over time? Are there periods of oversupply?
+```{r}
+global_balance <- coffee_clean |>
+  group_by(Year) |>
+  summarise(
+    Production = sum(Production, na.rm = TRUE),
+    Consumption = sum(`Domestic Consumption`, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    Gap = Production - Consumption
+  )
+
+plot3 <- ggplot(data = global_balance, 
+                mapping = aes(x = Year)) +
+  geom_line(aes(y = Production, color = "Production"), linewidth = 1.2) +
+  geom_line(aes(y = Consumption, color = "Consumption"), linewidth = 1.2) +
+  scale_color_manual(values = c("Production" = "#9F5000", 
+                                "Consumption" = "#FFAF60")) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Global Coffee Production vs Consumption",
+    subtitle = "Red areas indicate periods of oversupply",
+    x = "Year",
+    y = "Volume (1000 60-kg bags)",
+    color = NULL,
+    caption = "Source: USDA PSD"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "top"
+  )
+
+print(plot3)
+```
+Global coffee production and consumption have both increased steadily over time, with production generally outpacing consumption.
+Notable periods of oversupply appear after the early 2000s, when production began to grow more rapidly, creating occasional supply surpluses in the global market.
+
